@@ -1,63 +1,16 @@
 % ============================================================
 %  ai.pl  —  Viking Chess (Hnefatafl) AI
 %  Member 4 file
-%  Depends on: game.pl (all_moves/3, apply_move/3,
-%              defenders_win/1, attackers_win/1,
-%              king_position/3, count_pieces/3)
-%  Until game.pl is ready, mock predicates below are used.
 % ============================================================
 
-:- consult('game.pl').
+:- consult('game.pl'). 
+:- set_prolog_flag(stack_limit, 2_147_483_648).
 % ============================================================
-% MOCK PREDICATES  (remove these once game.pl is ready)
-% ============================================================
-
-% Mock: count pieces of a given type on the board
-count_pieces(Board, Type, Count) :-
-    flatten(Board, Flat),
-    include(==(Type), Flat, Matching),
-    length(Matching, Count).
-
-% Mock: find king position
-king_position(Board, R, C) :-
-    nth0(R, Board, Row),
-    nth0(C, Row, k), !.
-
-% Mock: win conditions (will be replaced by game.pl)
-defenders_win(Board) :-
-    king_position(Board, R, C),
-    is_corner(R, C).
-
-attackers_win(Board) :-
-    \+ king_position(Board, _, _).   % king removed = captured
-
-% Mock: all_moves — returns empty list until game.pl is ready
-% REPLACE THIS with the real all_moves from game.pl
-all_moves(_Board, _Player, []).
-
-% Mock: apply_move — does nothing until game.pl is ready
-% REPLACE THIS with the real apply_move from game.pl
-apply_move(Board, _Move, Board).
-
-
-% ============================================================
-% 1. SPECIAL SQUARES
-% ============================================================
-
-is_corner(0,  0).
-is_corner(0,  10).
-is_corner(10, 0).
-is_corner(10, 10).
-
-is_throne(5, 5).
-
-
-% ============================================================
-% 2. DIFFICULTY LEVELS
+% 1. DIFFICULTY LEVELS
 % ============================================================
 
 :- dynamic difficulty/1.
-difficulty(medium).          % default difficulty
+difficulty(easy).          % default difficulty
 
 % Change difficulty at runtime
 set_difficulty(Level) :-
@@ -74,8 +27,8 @@ valid_difficulty(hard).
 
 % Depth for each difficulty level
 depth_for(easy,   1).
-depth_for(medium, 3).
-depth_for(hard,   5).
+depth_for(medium, 2). 
+depth_for(hard,   3). 
 
 % Get current depth
 current_depth(Depth) :-
@@ -84,7 +37,7 @@ current_depth(Depth) :-
 
 
 % ============================================================
-% 3. UTILITY FUNCTION
+% 2. UTILITY FUNCTION
 % ============================================================
 % Positive value  = good for DEFENDER
 % Negative value  = good for ATTACKER
@@ -97,20 +50,22 @@ utility(Board, Value) :-
     % --- king position ---
     ( king_position(Board, KR, KC)
     -> corner_distance(KR, KC, Dist),
-        king_safety_score(Board, KR, KC, Safety)
+       king_safety_score(Board, KR, KC, Safety)
     ;  Dist = 0, Safety = 0      % king already captured
     ),
 
     % --- terminal bonuses ---
-    ( defenders_win(Board) -> WinBonus =  9000 ; WinBonus = 0 ),
-    ( attackers_win(Board) -> WinBonus = -9000 ; true ),
+    ( defenders_win(Board) -> WinBonus = 9000
+    ; attackers_win(Board) -> WinBonus = -9000
+    ; WinBonus = 0
+    ),
 
     % --- final score ---
     Value is WinBonus
           + (Defenders * 10)
-          - (Attackers *  8)
+          - (Attackers * 8)
           - (Dist      * 15)   % closer king to corner = better for defender
-          + (Safety    *  5).  % safer king = better for defender
+          + (Safety    * 5).   % safer king = better for defender
 
 
 % Distance of king to nearest corner (lower = better for defender)
@@ -133,29 +88,19 @@ king_safety_score(Board, R, C, Safety) :-
     count_safe_neighbors(Board, Neighbors, 0, Safety).
 
 count_safe_neighbors(_, [], Acc, Acc).
+
 count_safe_neighbors(Board, [(R, C)|Rest], Acc, Safety) :-
-    ( R >= 0, R =< 10, C >= 0, C =< 10 ->
+    ( (R >= 0, R =< 10, C >= 0, C =< 10) ->
         get_cell(Board, R, C, Cell),
-        ( Cell = e ; Cell = d ; Cell = k )   % empty or friendly = safe
-    ->  Acc1 is Acc + 1
+        ( (Cell = e ; Cell = d ; Cell = k) -> Acc1 is Acc + 1 ; Acc1 = Acc )
     ;   Acc1 = Acc
     ),
     count_safe_neighbors(Board, Rest, Acc1, Safety).
-
-
-% Helper: get cell value from board
-get_cell(Board, R, C, Cell) :-
-    nth0(R, Board, Row),
-    nth0(C, Row, Cell).
-
-
 % ============================================================
-% 4. ALPHA-BETA PRUNING
+% 3. ALPHA-BETA PRUNING
 % ============================================================
 % alpha_beta(+Board, +Depth, +Alpha, +Beta, +Mode, -Value)
-% Mode: maximizing (defender's turn) | minimizing (attacker's turn)
 
-% --- Base case: depth 0 or terminal state ---
 alpha_beta(Board, 0, _, _, _, Value) :-
     !,
     utility(Board, Value).
@@ -166,28 +111,22 @@ alpha_beta(Board, _, _, _, _, 9000) :-
 alpha_beta(Board, _, _, _, _, -9000) :-
     attackers_win(Board), !.
 
-% --- Maximizing node (defender plays) ---
 alpha_beta(Board, Depth, Alpha, Beta, maximizing, Value) :-
     all_moves(Board, defender, Moves),
     Moves \= [], !,
     Depth1 is Depth - 1,
     max_loop(Board, Moves, Depth1, Alpha, Beta, -10000, Value).
 
-% No moves for defender = attacker wins
 alpha_beta(_, _, _, _, maximizing, -9000) :- !.
 
-% --- Minimizing node (attacker plays) ---
 alpha_beta(Board, Depth, Alpha, Beta, minimizing, Value) :-
     all_moves(Board, attacker, Moves),
     Moves \= [], !,
     Depth1 is Depth - 1,
     min_loop(Board, Moves, Depth1, Alpha, Beta, 10000, Value).
 
-% No moves for attacker = defender wins
 alpha_beta(_, _, _, _, minimizing, 9000) :- !.
 
-
-% --- Max loop: iterate over moves, keep best (highest) value ---
 max_loop(_, [], _, _, _, Best, Best).
 max_loop(Board, [Move|Rest], Depth, Alpha, Beta, Current, Best) :-
     apply_move(Board, Move, NewBoard),
@@ -195,12 +134,10 @@ max_loop(Board, [Move|Rest], Depth, Alpha, Beta, Current, Best) :-
     NewCurrent is max(Current, Val),
     NewAlpha   is max(Alpha,   NewCurrent),
     ( NewAlpha >= Beta
-    ->  Best = NewCurrent          % beta cut-off
+    ->  Best = NewCurrent
     ;   max_loop(Board, Rest, Depth, NewAlpha, Beta, NewCurrent, Best)
     ).
 
-
-% --- Min loop: iterate over moves, keep best (lowest) value ---
 min_loop(_, [], _, _, _, Best, Best).
 min_loop(Board, [Move|Rest], Depth, Alpha, Beta, Current, Best) :-
     apply_move(Board, Move, NewBoard),
@@ -208,69 +145,140 @@ min_loop(Board, [Move|Rest], Depth, Alpha, Beta, Current, Best) :-
     NewCurrent is min(Current, Val),
     NewBeta    is min(Beta,    NewCurrent),
     ( Alpha >= NewBeta
-    ->  Best = NewCurrent          % alpha cut-off
+    ->  Best = NewCurrent
     ;   min_loop(Board, Rest, Depth, Alpha, NewBeta, NewCurrent, Best)
     ).
 
 
 % ============================================================
-% 5. BEST MOVE SELECTION
+% 4. BEST MOVE SELECTION
 % ============================================================
-% best_move(+Board, +Player, -BestMove)
-% Player: attacker | defender
+% ============================================================
+% OPTIMIZED BEST MOVE SELECTION
+% ============================================================
 
+% Step 1: score each move quickly using utility
+score_move(Board, Player, Move, Score-Move) :-
+    ( apply_move(Board, Move, NewBoard) ->
+        utility(NewBoard, U)
+    ;   U = 0
+    ),
+    ( Player = attacker -> Score is -U ; Score is U ).
+
+% Step 2: order moves best-first for better pruning
+order_moves(Board, Player, Moves, Ordered) :-
+    maplist(score_move(Board, Player), Moves, Scored),
+    msort(Scored, Sorted),
+    ( Player = attacker
+    ->  Sorted = OrderedScored
+    ;   reverse(Sorted, OrderedScored)
+    ),
+    pairs_values(OrderedScored, Ordered).
+
+% Step 3: limit to top N moves only
+limit_moves(Moves, Limited) :-
+    length(Moves, Len),
+    ( Len > 15
+    -> findall(M, (nth1(I, Moves, M), I =< 15), Limited)
+    ;  Limited = Moves
+    ).
+
+% Step 4: best_move with all optimizations
 best_move(Board, Player, BestMove) :-
     current_depth(Depth),
     all_moves(Board, Player, Moves),
-    Moves \= [],
-    !,
+    Moves \= [], !,
+    order_moves(Board, Player, Moves, OrderedMoves),
+    ( length(OrderedMoves, Len), Len > 12
+    -> findall(M, (nth1(I, OrderedMoves, M), I =< 12), LimitedMoves)
+    ;  LimitedMoves = OrderedMoves
+    ),
     ( Player = defender
     -> StartVal = -10000, Mode = minimizing
     ;  StartVal =  10000, Mode = maximizing
     ),
-    find_best(Board, Moves, Depth, Mode, StartVal, none, BestMove),
+    find_best(Board, LimitedMoves, Depth, Mode, StartVal, none, BestMove),
     format("Computer plays: ~w~n", [BestMove]).
 
 best_move(_, _, none) :-
     write("Computer has no moves available."), nl.
 
 
-% find_best(+Board, +Moves, +Depth, +OpponentMode,
-%           +BestValSoFar, +BestMoveSoFar, -BestMove)
+% ============================================================
+% FIND BEST — required by best_move
+% ============================================================
+
 find_best(_, [], _, _, _, Best, Best).
 
 find_best(Board, [Move|Rest], Depth, Mode, BestVal, _, BestMove) :-
     apply_move(Board, Move, NewBoard),
     alpha_beta(NewBoard, Depth, -10000, 10000, Mode, Val),
-    (   (Mode = minimizing, Val > BestVal)   % defender maximizes
-    ;   (Mode = maximizing, Val < BestVal)   % attacker minimizes
+    (   (Mode = minimizing, Val > BestVal)
+    ;   (Mode = maximizing, Val < BestVal)
     ), !,
     find_best(Board, Rest, Depth, Mode, Val, Move, BestMove).
 
 find_best(Board, [_|Rest], Depth, Mode, BestVal, Current, BestMove) :-
     find_best(Board, Rest, Depth, Mode, BestVal, Current, BestMove).
 
-
 % ============================================================
-% 6. QUICK TEST  (run with: ?- test_ai.)
+% 5. TEST PREDICATE
+% run with:  ?- test_ai.
+% ============================================================
+% ============================================================
+% 5. TEST PREDICATE
+% Uncomment ONLY the difficulty level you want to test
+% run with:  ?- test_ai.
 % ============================================================
 test_ai :-
-    write('=== AI Module Test ==='), nl,
+    write('========================================'), nl,
+    write('     AI Module Test - Hnefatafl         '), nl,
+    write('========================================'), nl,
 
-    % Load initial board from game.pl (Member 1)
+    % Load and print board
     initial_board(Board),
+    print_board(Board),
 
-    % Test utility
+    % Utility on initial board
     utility(Board, Val),
-    format("Utility of initial board: ~w~n", [Val]),
+    format("~nUtility of initial board : ~w~n", [Val]),
 
-    % Test difficulty
-    set_difficulty(hard),
-    current_depth(D),
-    format("Current depth (hard): ~w~n", [D]),
+    % King info
+    king_position(Board, KR, KC),
+    format("King position            : row=~w, col=~w~n", [KR, KC]),
+    corner_distance(KR, KC, Dist),
+    format("King distance to corner  : ~w~n~n", [Dist]),
 
-    % Test best_move (will return none until game.pl moves are ready)
-    best_move(Board, attacker, Move),
-    format("Best move for attacker: ~w~n", [Move]),
+    % ==========================================
+    % UNCOMMENT ONLY ONE BLOCK BELOW
+    % ==========================================
 
-    write('=== Test Complete ==='), nl.
+    % --- EASY (depth 1) --- FAST ---
+    %set_difficulty(easy),
+    %current_depth(D), format("Difficulty: easy | Depth: ~w~n", [D]),
+    %write('Calculating attacker move...'), nl,
+    %best_move(Board, attacker, AMove),
+    %format("Attacker best move : ~w~n", [AMove]),
+    %write('Calculating defender move...'), nl,
+    %best_move(Board, defender, DMove),
+    %format("Defender best move : ~w~n", [DMove]).
+
+    % --- MEDIUM (depth 2) --- MODERATE ---
+    set_difficulty(medium),
+    current_depth(D), format("Difficulty: medium | Depth: ~w~n", [D]),
+    write('Calculating attacker move (may take ~10 sec)...'), nl,
+    best_move(Board, attacker, AMove),
+    format("Attacker best move : ~w~n", [AMove]),
+    write('Calculating defender move (may take ~10 sec)...'), nl,
+    best_move(Board, defender, DMove),
+    format("Defender best move : ~w~n", [DMove]).
+
+    % --- HARD (depth 3) --- SLOW ---
+    % set_difficulty(hard),
+    % current_depth(D), format("Difficulty: hard | Depth: ~w~n", [D]),
+    % write('Calculating attacker move (may take several minutes)...'), nl,
+    % best_move(Board, attacker, AMove),
+    % format("Attacker best move : ~w~n", [AMove]),
+    % write('Calculating defender move (may take several minutes)...'), nl,
+    % best_move(Board, defender, DMove),
+    % format("Defender best move : ~w~n", [DMove]).

@@ -357,3 +357,39 @@ legal_move(Board, Player, move(FromR, FromC, ToR, ToC)) :-
        member(move(FromR, FromC, ToR, ToC), Moves)
     ;  basic_valid_move(Board, Piece, FromR, FromC, ToR, ToC)
     ).
+
+% ============================================================
+%  Move Generation (Member 2)
+% ============================================================
+
+
+valid_move(StartX, StartY, Board, EndX, EndY) :-
+    direction(DX, DY),
+    slide(StartX, StartY, DX, DY, Board, EndX, EndY).
+
+slide(X, Y, DX, DY, Board, NextX, NextY) :-
+    NextX is X + DX,
+    NextY is Y + DY,
+    in_bounds(NextX, NextY),
+    is_empty(Board, NextX, NextY).
+
+slide(X, Y, DX, DY, Board, FinalX, FinalY) :-
+    NextX is X + DX,
+    NextY is Y + DY,
+    in_bounds(NextX, NextY),
+    is_empty(Board, NextX, NextY),
+    slide(NextX, NextY, DX, DY, Board, FinalX, FinalY).
+
+is_empty(Board, X, Y) :-
+    get_cell(Board, X, Y, e).
+
+
+all_moves(Board, Player, Moves) :-
+    findall(move(FromR, FromC, ToR, ToC),
+        (
+            get_cell(Board, FromR, FromC, Piece),
+            piece_owner(Piece, Player),
+            valid_move(FromR, FromC, Board, ToR, ToC),
+            can_occupy(Piece, ToR, ToC)
+        ),
+        Moves).

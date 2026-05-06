@@ -133,7 +133,8 @@ king_position(Board, R, C) :-
     nth0(R, Board, Row),
     nth0(C, Row, k), !.
 
-
+// Name : Omar Mohamed Abdelmoez 
+// ID : 20230263
 % ------------------------------------------------------------
 % Win conditions
 % ------------------------------------------------------------
@@ -219,7 +220,7 @@ direction(0, 1).
 % ------------------------------------------------------------
 basic_valid_move(Board, Piece, FromR, FromC, ToR, ToC) :-
     in_bounds(FromR, FromC),
-    in_bounds(ToR, ToC),
+    in_bounds(ToR, ToC),   
     (FromR \= ToR ; FromC \= ToC),
     get_cell(Board, ToR, ToC, e),
     straight_move(FromR, FromC, ToR, ToC),
